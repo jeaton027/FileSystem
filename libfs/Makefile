@@ -8,7 +8,7 @@ CFLAGS := -Wall -Wextra -Werror
 all: $(lib)
 
 $(lib): $(objs)
-        ar -rcs $@ $^
+	ar -rcs $@ $^
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $^
