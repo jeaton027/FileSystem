@@ -489,7 +489,9 @@ int fs_write(int fd, void *buf, size_t count) {
 
 		// write until all data given is written, or until 
 		// available blocks in disks run out
-    while (cur_db < block_disk_count() && count > 0) {
+      while (cur_db < sb->block_amt -1 && count > 0) {
+        
+
 				void* fat_buf = malloc(BLOCK_SIZE * sb->root_dir - 1);
         int offset = 0;
 
