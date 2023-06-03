@@ -598,7 +598,7 @@ int fs_write(int fd, void *buf, size_t count) {
     free(root_buf);
 		// printf("***WRITE data written: %ld\n", data_written);
     return data_written;
-}//write
+}//write g
 
 int min(int a, int b) {
   return (a < b) ? a : b;
