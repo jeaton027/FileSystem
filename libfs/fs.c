@@ -228,6 +228,7 @@ int fs_create(const char * filename) {
   if (sb == NULL) {
     return -1;
   }
+	// printf("after sb check\n");
   void * buffer = malloc(BLOCK_SIZE);
   // read rootdir into buffer
   block_read(sb -> root_dir, buffer);
@@ -236,8 +237,10 @@ int fs_create(const char * filename) {
     struct root * entry = (struct root * )(buffer + i * sizeof(struct root));
     if (strcmp(entry -> filename, filename) == 0) {
       free(buffer);
+			printf("File already exists\n");
       return -1; // File already exists
     }
+
     // memcopy from buffer into entry
     //memcpy(entry, buffer, sizeof(struct root));
     //printf("COMPARE %s : %s\n",entry->filename, filename);
@@ -261,6 +264,7 @@ int fs_create(const char * filename) {
     }
   }
   free(buffer);
+	printf("at end oops\n");
   return -1;
 } //create
 
@@ -353,6 +357,8 @@ int fs_open(const char * filename) {
   /* Open file for reading and writing */
   FILE * fp = fopen(filename, "r+");
   int fd;
+	if (fp == NULL) {
+	}
   /* Add fd, filename to fd_table */
   for (int i = 0; i < BLOCK_SIZE; i++) {
     if (fd_table[i].fd == -1) {
@@ -465,7 +471,8 @@ int fs_lseek(int fd, size_t offset) {
 
 int fs_write(int fd, void *buf, size_t count) {
     if (sb == NULL || fd < 0) {
-        return -1;
+        // printf("***WRITE,sb == null, fb<0\n");
+				return -1;
     }
 
     int cur_db = 1; 					// current data block index
@@ -477,21 +484,39 @@ int fs_write(int fd, void *buf, size_t count) {
 		// given file descriptor, find corresponding pointer fp
 		// if file is open
     FILE *fp = NULL;
+		// printf("fd: %d", fd);
     for (int i = 0; i < BLOCK_SIZE; i++) {
-        if (fd_table[i].fd == fd) {
-            fp = fd_table[i].fp;
+        
+				if (fd_table[i].fd == 0) {
+					// printf("fd table's fd%d  \n", fd_table[i].fd);
+					// printf("fd: %d", fd);
+				}
+				if (fd == 0 && fd_table[i].fd == 0) {
+					// printf("wtfffff %d\n", fd);
+				}
+				if (fd_table[i].fd == fd) {
+            // printf("DO I MSKE IT?? fp = %p\n", fp);
+						fp = fd_table[i].fp;
+
         }
     }
+		// printf("\n");
+		
 
-    if (fp == NULL || buf == NULL) {
-        return -1;
+		if (buf == NULL) {
+        // printf(" buf == NULL\n");
+				return 0;
+    }
+		// char* new_buf = (char*)buf;
+		// printf(" buf : %s\n", new_buf);
+    if (fp == NULL) {
+        // printf("***WRITE fp==NULL\n");
+				return -1;
     }
 
 		// write until all data given is written, or until 
 		// available blocks in disks run out
-      while (cur_db < sb->block_amt -1 && count > 0) {
-        
-
+    while (cur_db < block_disk_count() && count > 0) {
 				void* fat_buf = malloc(BLOCK_SIZE * sb->root_dir - 1);
         int offset = 0;
 
@@ -571,9 +596,9 @@ int fs_write(int fd, void *buf, size_t count) {
 
     block_write(sb->root_dir, root_buf);
     free(root_buf);
-
+		// printf("***WRITE data written: %ld\n", data_written);
     return data_written;
-}//write g
+}//write
 
 int min(int a, int b) {
   return (a < b) ? a : b;
@@ -584,10 +609,12 @@ int fs_read(int fd, void *buf, size_t count) {
         return -1;
     }
 
-    FILE* fp = NULL;
+    FILE* fp = NULL;				// file pointer
     char* filename = NULL;
     int offset = 0;
 
+		// given file descriptor, find corresponding pointer fp
+		// if file is open
     for (int i = 0; i < BLOCK_SIZE; i++) {
         if (fd_table[i].fd == fd) {
             fp = fd_table[i].fp;
@@ -600,9 +627,12 @@ int fs_read(int fd, void *buf, size_t count) {
         return -1;
     }
 
+		// read root directory from disk into buffer
     void* root_dir_buffer = malloc(BLOCK_SIZE);
     block_read(sb->root_dir, root_dir_buffer);
 
+		// iterate through entire root directory
+		// finds index of corresponding given file within disk
     uint16_t file_index = FAT_EOC;
     for (int i = 0; i < 128; i++) {
         struct root* entry = (struct root*)(root_dir_buffer + i * sizeof(struct root));
@@ -617,6 +647,7 @@ int fs_read(int fd, void *buf, size_t count) {
         return -1;
     }
     
+		
     void* fat_buffer = malloc(BLOCK_SIZE * sb->block_num);
     for (int i = 1; i <= sb->block_num; i++) {
         void* fat_block = malloc(BLOCK_SIZE);
@@ -625,6 +656,14 @@ int fs_read(int fd, void *buf, size_t count) {
         free(fat_block);
     }
 
+		size_t blocks_to_skip = offset / BLOCK_SIZE;
+    size_t bytes_to_skip = offset % BLOCK_SIZE;
+    
+    while (blocks_to_skip > 0 && file_index != FAT_EOC) {
+			memcpy(&file_index, (uint16_t*)((char*)fat_buffer + file_index * 2), sizeof(uint16_t));
+			blocks_to_skip--;
+		}
+
     void* bounce_buffer = malloc(BLOCK_SIZE);
     size_t data_read = 0;
     size_t remaining = count;
@@ -632,8 +671,8 @@ int fs_read(int fd, void *buf, size_t count) {
     while (file_index != FAT_EOC && remaining > 0) {
         block_read(sb->data_block + file_index, bounce_buffer);
         
-        size_t data_to_read = min(remaining, BLOCK_SIZE);
-        memcpy((char*)buf + data_read, bounce_buffer, data_to_read);
+        size_t data_to_read = min(remaining, BLOCK_SIZE - bytes_to_skip);
+        memcpy((char*)buf + data_read, bounce_buffer + bytes_to_skip, data_to_read);
         data_read += data_to_read;
         remaining -= data_to_read;
 
